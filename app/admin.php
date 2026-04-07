@@ -109,20 +109,22 @@ if ($_SESSION['admin'] ?? false) {
 
     // ─── PRODUCT TOEVOEGEN ────────────────────────────────────
     if (isset($_POST['add_product'])) {
-        $catId    = (int)$_POST['prod_cat_id'];
-        $naam     = trim($_POST['prod_naam'] ?? '');
-        $prijs    = (float)str_replace(',', '.', $_POST['prod_prijs'] ?? '0');
-        $maat     = trim($_POST['prod_maat'] ?? '');
-        $vega     = isset($_POST['prod_vega']) ? 1 : 0;
-        $volgorde = (int)($_POST['prod_volgorde'] ?? 99);
+        $catId       = (int)$_POST['prod_cat_id'];
+        $naam        = trim($_POST['prod_naam'] ?? '');
+        $beschrijving = trim($_POST['prod_beschrijving'] ?? '');
+        $prijs       = (float)str_replace(',', '.', $_POST['prod_prijs'] ?? '0');
+        $maat        = trim($_POST['prod_maat'] ?? '');
+        $vega        = isset($_POST['prod_vega']) ? 1 : 0;
+        $volgorde    = (int)($_POST['prod_volgorde'] ?? 99);
 
         if ($naam !== '' && $catId > 0) {
             $db->prepare(
-                    "INSERT INTO `producten` (categorie_id, naam, maat, prijs, vega, volgorde)
-                 VALUES (:c, :n, :m, :p, :v, :vo)"
+                    "INSERT INTO `producten` (categorie_id, naam, beschrijving, maat, prijs, vega, volgorde)
+                 VALUES (:c, :n, :b, :m, :p, :v, :vo)"
             )->execute([
                     ':c'  => $catId,
                     ':n'  => $naam,
+                    ':b'  => $beschrijving ?: null,
                     ':m'  => $maat ?: null,
                     ':p'  => $prijs,
                     ':v'  => $vega,
@@ -135,15 +137,16 @@ if ($_SESSION['admin'] ?? false) {
     // ─── PRODUCTEN OPSLAAN ────────────────────────────────────
     if (isset($_POST['save_products'])) {
         $stmt = $db->prepare(
-                "UPDATE `producten` SET naam=:n, prijs=:p, volgorde=:v WHERE id=:id"
+                "UPDATE `producten` SET naam=:n, beschrijving=:b, prijs=:p, volgorde=:v WHERE id=:id"
         );
         $fouten = 0;
         foreach ($_POST['prod_namen'] as $id => $naam) {
-            $naam  = trim($naam);
-            $prijs = (float)str_replace(',', '.', $_POST['prod_prijzen'][$id] ?? '0');
-            $vol   = (int)($_POST['prod_volgorden'][$id] ?? 99);
+            $naam        = trim($naam);
+            $beschrijving = trim($_POST['prod_beschrijvingen'][$id] ?? '');
+            $prijs       = (float)str_replace(',', '.', $_POST['prod_prijzen'][$id] ?? '0');
+            $vol         = (int)($_POST['prod_volgorden'][$id] ?? 99);
             if ($naam !== '' && $prijs >= 0) {
-                $stmt->execute([':n' => $naam, ':p' => $prijs, ':v' => $vol, ':id' => (int)$id]);
+                $stmt->execute([':n' => $naam, ':b' => $beschrijving ?: null, ':p' => $prijs, ':v' => $vol, ':id' => (int)$id]);
             } else {
                 $fouten++;
             }
@@ -279,7 +282,7 @@ if (str_starts_with($actief, 'cat-')) {
 
     <div class="topbar">
         <h1><i class="fa-solid fa-fire-flame-curved"></i> Snackcorner Admin</h1>
-        <div style="display:flex;gap:1rem;align-items:center;">
+        <div class="topbar-actions">
             <a href="index.php" target="_blank"><i class="fa-solid fa-arrow-up-right-from-square"></i> Bekijk website</a>
             <a href="admin.php?logout=1"><i class="fa-solid fa-right-from-bracket"></i> Uitloggen</a>
         </div>
@@ -371,7 +374,7 @@ if (str_starts_with($actief, 'cat-')) {
                             </tbody>
                         </table>
                     </div>
-                    <div style="text-align:right;">
+                    <div class="text-right">
                         <button type="submit" class="btn btn-save">
                             <i class="fa-solid fa-floppy-disk"></i> Opslaan
                         </button>
@@ -394,9 +397,9 @@ if (str_starts_with($actief, 'cat-')) {
                             </div>
                             <div class="field">
                                 <label>Volgorde</label>
-                                <input type="number" name="cat_volgorde" placeholder="99" min="0" style="width:80px">
+                                <input type="number" name="cat_volgorde" placeholder="99" min="0" class="input-narrow">
                             </div>
-                            <div class="field" style="justify-content:flex-end;">
+                            <div class="field" class="field-end">
                                 <button type="submit" class="btn btn-add">
                                     <i class="fa-solid fa-plus"></i> Toevoegen
                                 </button>
@@ -433,6 +436,7 @@ if (str_starts_with($actief, 'cat-')) {
                             <tr>
                                 <th>Volgorde</th>
                                 <th>Naam</th>
+                                <th>Beschrijving</th>
                                 <th>Maat</th>
                                 <th>Prijs (€)</th>
                                 <th></th>
@@ -452,10 +456,16 @@ if (str_starts_with($actief, 'cat-')) {
                                                value="<?= htmlspecialchars($prod['naam']) ?>">
                                     </td>
                                     <td>
+                                        <textarea class="name-input textarea-beschrijving"
+                                                  name="prod_beschrijvingen[<?= $prod['id'] ?>]"
+                                                  rows="2"
+                                                  placeholder="bijv. Met kaas, ui en saus..."><?= htmlspecialchars($prod['beschrijving'] ?? '') ?></textarea>
+                                    </td>
+                                    <td>
                                         <?php if (!empty($prod['maat'])): ?>
                                             <span class="badge-maat"><?= htmlspecialchars($prod['maat']) ?></span>
                                         <?php else: ?>
-                                            <span style="color:#adb5bd;font-size:.8rem;">—</span>
+                                            <span class="maat-empty">—</span>
                                         <?php endif; ?>
                                     </td>
                                     <td>
@@ -475,7 +485,7 @@ if (str_starts_with($actief, 'cat-')) {
                             </tbody>
                         </table>
                     </div>
-                    <div style="text-align:right;">
+                    <div class="text-right">
                         <button type="submit" class="btn btn-save">
                             <i class="fa-solid fa-floppy-disk"></i> Opslaan
                         </button>
@@ -493,30 +503,33 @@ if (str_starts_with($actief, 'cat-')) {
                                 <label>Naam</label>
                                 <input type="text" name="prod_naam" placeholder="bijv. Kroket" required>
                             </div>
+                            <div class="field field-wide">
+                                <label>Beschrijving <span class="label-hint">(optioneel)</span></label>
+                                <textarea name="prod_beschrijving" placeholder="bijv. Met mosterd en broodkruim" rows="2" class="textarea-full"></textarea>
+                            </div>
                             <div class="field">
                                 <label>Prijs (€)</label>
                                 <input type="number" name="prod_prijs" placeholder="2.50" step="0.01" min="0" required>
                             </div>
                             <div class="field">
-                                <label>Maat <span style="font-weight:400;text-transform:none">(optioneel)</span></label>
+                                <label>Maat <span class="label-hint">(optioneel)</span></label>
                                 <input type="text" name="prod_maat" placeholder="Klein / Groot">
                             </div>
                             <div class="field">
                                 <label>Volgorde</label>
-                                <input type="number" name="prod_volgorde" placeholder="99" min="0" style="width:80px">
+                                <input type="number" name="prod_volgorde" placeholder="99" min="0" class="input-narrow">
                             </div>
                             <div class="field">
                                 <label>Vegetarisch</label>
-                                <div style="display:flex;align-items:center;gap:.4rem;height:38px;">
+                                <div class="checkbox-wrap">
                                     <input type="checkbox" name="prod_vega" id="prod_vega"
-                                           style="width:16px;height:16px;cursor:pointer;">
-                                    <label for="prod_vega"
-                                           style="font-size:.9rem;text-transform:none;letter-spacing:0;color:#212529;cursor:pointer;">
+                                           class="checkbox-input">
+                                    <label for="prod_vega" class="checkbox-label">
                                         Ja
                                     </label>
                                 </div>
                             </div>
-                            <div class="field" style="justify-content:flex-end;">
+                            <div class="field" class="field-end">
                                 <button type="submit" class="btn btn-add">
                                     <i class="fa-solid fa-plus"></i> Toevoegen
                                 </button>

@@ -179,17 +179,17 @@ function slug(string $str): string {
                     >
                     <?php if ($zoekterm !== ''): ?>
                         <!-- Toon een wis-knop als er een zoekterm actief is -->
-                        <a href="index.php#menu" class="search-clear" style="display:flex;" aria-label="Zoekopdracht wissen">
+                        <a href="index.php#menu" class="search-clear visible" aria-label="Zoekopdracht wissen">
                             <i class="fa-solid fa-xmark"></i>
                         </a>
                     <?php endif; ?>
                 </div>
-                <div style="text-align:center;margin-top:.75rem;">
+                <div class="search-actions">
                     <button type="submit" class="btn btn-primary">
                         <i class="fa-solid fa-magnifying-glass"></i> Zoeken
                     </button>
                     <?php if ($zoekterm !== ''): ?>
-                        <a href="index.php#menu" class="btn btn-ghost" style="margin-left:.5rem;">
+                        <a href="index.php#menu" class="btn btn-ghost">
                             Alles tonen
                         </a>
                     <?php endif; ?>
@@ -209,7 +209,7 @@ function slug(string $str): string {
                 }
                 ?>
                 <?php if ($aantalGevonden === 0): ?>
-                    <div class="no-results" style="display:flex;">
+                    <div class="no-results visible">
                         <i class="fa-solid fa-circle-xmark"></i>
                         <p>Geen producten gevonden voor &ldquo;<?= htmlspecialchars($zoekterm) ?>&rdquo;.</p>
                         <small>Probeer een andere zoekterm.</small>
@@ -272,6 +272,10 @@ function slug(string $str): string {
                                             <span class="veg-badge"><i class="fa-solid fa-leaf"></i></span>
                                         <?php endif; ?>
                                     </div>
+
+                                    <?php if (!empty($first['beschrijving'])): ?>
+                                        <p class="product-beschrijving"><?= htmlspecialchars($first['beschrijving']) ?></p>
+                                    <?php endif; ?>
 
                                     <?php if ($hasDropdown): ?>
                                         <label class="size-label" for="<?= $selectId ?>">Kies maat:</label>
@@ -361,7 +365,7 @@ function slug(string $str): string {
                     <iframe
                             title="Snackcorner locatie op Google Maps"
                             src="https://maps.google.com/maps?q=Snackcorner%2C+Europaplein+7%2C+Gennep%2C+Nederland&output=embed"
-                            width="100%" height="400" style="border:0;"
+                            width="100%" height="400" class="map-frame"
                             allowfullscreen="" loading="lazy"
                             referrerpolicy="no-referrer-when-downgrade">
                     </iframe>

@@ -651,6 +651,13 @@ address { font-style: normal; }
     line-height: 1.3;
 }
 
+.product-beschrijving {
+    font-size: 0.8rem;
+    color: var(--clr-text-muted);
+    margin: 0.25rem 0 0.5rem;
+    line-height: 1.4;
+}
+
 .badge-popular {
     background-color: var(--clr-yellow);
     color: var(--clr-dark);
@@ -790,6 +797,7 @@ address { font-style: normal; }
     transition: background-color var(--transition), color var(--transition);
 }
 .search-clear:hover { background-color: var(--clr-red); color: var(--clr-white); }
+.search-clear.visible { display: flex; }
 
 
 /* ----------------------------------------------------------
@@ -805,6 +813,7 @@ address { font-style: normal; }
     padding: var(--space-3xl) 0;
     color: var(--clr-text-muted);
 }
+.no-results.visible { display: flex; }
 .no-results i    { font-size: 2.5rem; color: var(--clr-red); opacity: 0.5; }
 .no-results p    { font-size: 1rem; font-weight: 600; color: var(--clr-dark); }
 .no-results small { font-size: 0.875rem; }
@@ -1279,3 +1288,27 @@ tr:hover td      { background: #fafafa; }
     color: #0369a1;
     font-weight: 500;
 }
+
+
+/* ----------------------------------------------------------
+   UTILITY CLASSES (verplaatst uit inline styles)
+   ---------------------------------------------------------- */
+
+/* index.php */
+.search-actions          { text-align: center; margin-top: .75rem; }
+.search-actions .btn-ghost { margin-left: .5rem; }
+.map-frame               { border: 0; }
+
+/* admin.php */
+.topbar-actions          { display: flex; gap: 1rem; align-items: center; }
+.field-wide              { flex: 1 1 100%; }
+.field-end               { justify-content: flex-end; }
+.text-right              { text-align: right; }
+.input-narrow            { width: 80px; }
+.maat-empty              { color: #adb5bd; font-size: .8rem; }
+.textarea-beschrijving   { resize: vertical; min-width: 180px; }
+.checkbox-wrap           { display: flex; align-items: center; gap: .4rem; height: 38px; }
+.checkbox-label          { font-size: .9rem; text-transform: none; letter-spacing: 0; color: #212529; cursor: pointer; }
+.textarea-full           { width: 100%; resize: vertical; }
+.checkbox-input          { width: 16px; height: 16px; cursor: pointer; }
+.label-hint              { font-weight: 400; text-transform: none; }
