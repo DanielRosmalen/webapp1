@@ -74,9 +74,9 @@ function slug(string $str): string {
 <body>
 
 <!-- HEADER -->
-<header class="site-header" id="top">
+<header class="site-header">
     <div class="header-inner container">
-        <a href="#top" class="logo">
+        <a href="#" onclick="window.scrollTo({top:0,behavior:'smooth'});return false;" class="logo">
             <span class="logo-icon"><i class="fa-solid fa-fire-flame-curved"></i></span>
             <span class="logo-text">Snack<strong>corner</strong></span>
         </a>

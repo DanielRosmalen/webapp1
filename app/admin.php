@@ -86,20 +86,6 @@ if ($_SESSION['admin'] ?? false) {
         exit;
     }
 
-    // ─── CATEGORIE OPSLAAN (naam/icoon/volgorde) ──────────────
-    if (isset($_POST['save_cats'])) {
-        $stmt = $db->prepare("UPDATE `categorieen` SET naam=:n, icoon=:i, volgorde=:v WHERE id=:id");
-        foreach ($_POST['cat_namen'] as $id => $naam) {
-            $naam     = trim($naam);
-            $icoon    = trim($_POST['cat_icoontjes'][$id] ?? 'fa-star');
-            $volgorde = (int)($_POST['cat_volgorden'][$id] ?? 99);
-            if ($naam !== '') {
-                $stmt->execute([':n' => $naam, ':i' => $icoon, ':v' => $volgorde, ':id' => (int)$id]);
-            }
-        }
-        $saveMsg = 'success:Categorieën opgeslagen!';
-    }
-
     // ─── PRODUCT VERWIJDEREN ──────────────────────────────────
     if (isset($_POST['delete_product'])) {
         $db->prepare("DELETE FROM `producten` WHERE id = :id")
@@ -134,27 +120,6 @@ if ($_SESSION['admin'] ?? false) {
         }
     }
 
-    // ─── PRODUCTEN OPSLAAN ────────────────────────────────────
-    if (isset($_POST['save_products'])) {
-        $stmt = $db->prepare(
-                "UPDATE `producten` SET naam=:n, beschrijving=:b, prijs=:p, volgorde=:v WHERE id=:id"
-        );
-        $fouten = 0;
-        foreach ($_POST['prod_namen'] as $id => $naam) {
-            $naam        = trim($naam);
-            $beschrijving = trim($_POST['prod_beschrijvingen'][$id] ?? '');
-            $prijs       = (float)str_replace(',', '.', $_POST['prod_prijzen'][$id] ?? '0');
-            $vol         = (int)($_POST['prod_volgorden'][$id] ?? 99);
-            if ($naam !== '' && $prijs >= 0) {
-                $stmt->execute([':n' => $naam, ':b' => $beschrijving ?: null, ':p' => $prijs, ':v' => $vol, ':id' => (int)$id]);
-            } else {
-                $fouten++;
-            }
-        }
-        $saveMsg = $fouten === 0
-                ? 'success:Producten opgeslagen!'
-                : "warning:Opgeslagen, maar $fouten rijen overgeslagen.";
-    }
 }
 
 // ─── Data ophalen ─────────────────────────────────────────────
@@ -183,6 +148,13 @@ if ($_SESSION['admin'] ?? false) {
     }
 } else {
     $actief = 'categorieen';
+}
+
+if (!$saveMsg && ($_GET['saved'] ?? '') === 'product') {
+    $saveMsg = 'success:Product opgeslagen!';
+}
+if (!$saveMsg && ($_GET['saved'] ?? '') === 'categorie') {
+    $saveMsg = 'success:Categorie opgeslagen!';
 }
 
 $msgType = $msgText = '';
@@ -321,49 +293,34 @@ if (str_starts_with($actief, 'cat-')) {
                     <i class="fa-solid fa-folder-open"></i> Categorieën beheren
                 </div>
 
-                <form method="POST" action="admin.php?tab=categorieen">
-                    <input type="hidden" name="save_cats" value="1">
-                    <div class="card">
+                <div class="card">
                         <div class="card-header">
                             <h2><?= count($categorieen) ?> categorie<?= count($categorieen) !== 1 ? 'ën' : '' ?></h2>
-                            <button type="submit" class="btn btn-save">
-                                <i class="fa-solid fa-floppy-disk"></i> Opslaan
-                            </button>
                         </div>
                         <table>
                             <thead>
                             <tr>
                                 <th>Volgorde</th>
                                 <th>Naam</th>
-                                <th>Font Awesome icoon</th>
+                                <th>Icoon</th>
                                 <th>Preview</th>
-                                <th></th>
+                                <th>Acties</th>
                             </tr>
                             </thead>
                             <tbody>
                             <?php foreach ($categorieen as $cat): ?>
                                 <tr>
-                                    <td>
-                                        <input type="number" class="order-input"
-                                               name="cat_volgorden[<?= $cat['id'] ?>]"
-                                               value="<?= (int)$cat['volgorde'] ?>" min="0">
-                                    </td>
-                                    <td>
-                                        <input type="text" class="name-input"
-                                               name="cat_namen[<?= $cat['id'] ?>]"
-                                               value="<?= htmlspecialchars($cat['naam']) ?>">
-                                    </td>
-                                    <td>
-                                        <input type="text" class="name-input icon-input"
-                                               name="cat_icoontjes[<?= $cat['id'] ?>]"
-                                               value="<?= htmlspecialchars($cat['icoon']) ?>"
-                                               placeholder="bijv. fa-burger"
-                                               oninput="updatePreview(this)">
-                                    </td>
+                                    <td><?= (int)$cat['volgorde'] ?></td>
+                                    <td><?= htmlspecialchars($cat['naam']) ?></td>
+                                    <td><?= htmlspecialchars($cat['icoon']) ?></td>
                                     <td>
                                         <i class="fa-solid <?= htmlspecialchars($cat['icoon']) ?> icon-preview"></i>
                                     </td>
                                     <td>
+                                        <a href="admin_categorie_bewerken.php?id=<?= $cat['id'] ?>"
+                                           class="btn btn-save" style="text-decoration:none;">
+                                            <i class="fa-solid fa-pen"></i> Bewerken
+                                        </a>
                                         <button type="button" class="btn-delete"
                                                 onclick="openCatModal(<?= $cat['id'] ?>, '<?= htmlspecialchars(addslashes($cat['naam'])) ?>')">
                                             <i class="fa-solid fa-trash"></i> Verwijder
@@ -374,12 +331,6 @@ if (str_starts_with($actief, 'cat-')) {
                             </tbody>
                         </table>
                     </div>
-                    <div class="text-right">
-                        <button type="submit" class="btn btn-save">
-                            <i class="fa-solid fa-floppy-disk"></i> Opslaan
-                        </button>
-                    </div>
-                </form>
 
                 <!-- Nieuwe categorie toevoegen -->
                 <div class="add-section">
@@ -422,14 +373,9 @@ if (str_starts_with($actief, 'cat-')) {
                     <?= htmlspecialchars($activeCat['naam']) ?>
                 </div>
 
-                <form method="POST" action="admin.php?tab=<?= $actief ?>">
-                    <input type="hidden" name="save_products" value="1">
-                    <div class="card">
+                <div class="card">
                         <div class="card-header">
                             <h2><?= count($producten) ?> product<?= count($producten) !== 1 ? 'en' : '' ?></h2>
-                            <button type="submit" class="btn btn-save">
-                                <i class="fa-solid fa-floppy-disk"></i> Opslaan
-                            </button>
                         </div>
                         <table>
                             <thead>
@@ -439,28 +385,15 @@ if (str_starts_with($actief, 'cat-')) {
                                 <th>Beschrijving</th>
                                 <th>Maat</th>
                                 <th>Prijs (€)</th>
-                                <th></th>
+                                <th>Acties</th>
                             </tr>
                             </thead>
                             <tbody>
                             <?php foreach ($producten as $prod): ?>
                                 <tr>
-                                    <td>
-                                        <input type="number" class="order-input"
-                                               name="prod_volgorden[<?= $prod['id'] ?>]"
-                                               value="<?= (int)$prod['volgorde'] ?>" min="0">
-                                    </td>
-                                    <td>
-                                        <input type="text" class="name-input"
-                                               name="prod_namen[<?= $prod['id'] ?>]"
-                                               value="<?= htmlspecialchars($prod['naam']) ?>">
-                                    </td>
-                                    <td>
-                                        <textarea class="name-input textarea-beschrijving"
-                                                  name="prod_beschrijvingen[<?= $prod['id'] ?>]"
-                                                  rows="2"
-                                                  placeholder="bijv. Met kaas, ui en saus..."><?= htmlspecialchars($prod['beschrijving'] ?? '') ?></textarea>
-                                    </td>
+                                    <td><?= (int)$prod['volgorde'] ?></td>
+                                    <td><?= htmlspecialchars($prod['naam']) ?></td>
+                                    <td><?= htmlspecialchars($prod['beschrijving'] ?? '') ?></td>
                                     <td>
                                         <?php if (!empty($prod['maat'])): ?>
                                             <span class="badge-maat"><?= htmlspecialchars($prod['maat']) ?></span>
@@ -468,13 +401,12 @@ if (str_starts_with($actief, 'cat-')) {
                                             <span class="maat-empty">—</span>
                                         <?php endif; ?>
                                     </td>
+                                    <td>€<?= number_format($prod['prijs'], 2, ',', '') ?></td>
                                     <td>
-                                        <input type="text" class="price-input"
-                                               name="prod_prijzen[<?= $prod['id'] ?>]"
-                                               value="<?= number_format($prod['prijs'], 2, ',', '') ?>"
-                                               inputmode="decimal">
-                                    </td>
-                                    <td>
+                                        <a href="admin_product_bewerken.php?id=<?= $prod['id'] ?>&tab=<?= urlencode($actief) ?>"
+                                           class="btn btn-save" style="text-decoration:none;">
+                                            <i class="fa-solid fa-pen"></i> Bewerken
+                                        </a>
                                         <button type="button" class="btn-delete"
                                                 onclick="openModal(<?= $prod['id'] ?>, '<?= htmlspecialchars(addslashes($prod['naam'])) ?>')">
                                             <i class="fa-solid fa-trash"></i> Verwijder
@@ -485,12 +417,6 @@ if (str_starts_with($actief, 'cat-')) {
                             </tbody>
                         </table>
                     </div>
-                    <div class="text-right">
-                        <button type="submit" class="btn btn-save">
-                            <i class="fa-solid fa-floppy-disk"></i> Opslaan
-                        </button>
-                    </div>
-                </form>
 
                 <!-- Nieuw product toevoegen -->
                 <div class="add-section">
@@ -569,14 +495,6 @@ if (str_starts_with($actief, 'cat-')) {
             if (e.target === this) closeCatModal();
         });
 
-        // Live icoon preview
-        function updatePreview(input) {
-            var row     = input.closest('tr');
-            var preview = row ? row.querySelector('.icon-preview') : null;
-            if (!preview) return;
-            // Verwijder alle fa-* klassen behalve fa-solid
-            preview.className = 'fa-solid ' + input.value.trim() + ' icon-preview';
-        }
     </script>
 
 <?php endif; ?>
