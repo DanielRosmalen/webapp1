@@ -86,6 +86,15 @@ if ($_SESSION['admin'] ?? false) {
         exit;
     }
 
+    // ─── BESTELLING AFGEROND / VERWIJDEREN ───────────────────
+    if (isset($_POST['delete_order'])) {
+        $db->prepare("DELETE FROM `orders` WHERE ordernummer = :id")
+                ->execute([':id' => (int)$_POST['delete_order_id']]);
+        $saveMsg = 'success:Bestelling gemarkeerd als afgerond.';
+        header('Location: admin.php?tab=bestellingen');
+        exit;
+    }
+
     // ─── PRODUCT VERWIJDEREN ──────────────────────────────────
     if (isset($_POST['delete_product'])) {
         $db->prepare("DELETE FROM `producten` WHERE id = :id")
@@ -125,15 +134,19 @@ if ($_SESSION['admin'] ?? false) {
 // ─── Data ophalen ─────────────────────────────────────────────
 $categorieen = [];
 $producten   = [];
+$orders      = [];
+$orderCount  = 0;
 
 if ($_SESSION['admin'] ?? false) {
     $categorieen = $db->query(
             "SELECT * FROM `categorieen` ORDER BY volgorde ASC, naam ASC"
     )->fetchAll(PDO::FETCH_ASSOC);
 
+    $orderCount = (int)$db->query("SELECT COUNT(*) FROM `orders`")->fetchColumn();
+
     // Actieve tab bepalen
     $actief = $_GET['tab'] ?? 'categorieen';
-    $geldig = ['categorieen'];
+    $geldig = ['categorieen', 'bestellingen'];
     foreach ($categorieen as $c) { $geldig[] = 'cat-' . $c['id']; }
     if (!in_array($actief, $geldig)) $actief = 'categorieen';
 
@@ -145,6 +158,13 @@ if ($_SESSION['admin'] ?? false) {
         );
         $producten->execute([':c' => $activeCatId]);
         $producten = $producten->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // Bestellingen ophalen
+    if ($actief === 'bestellingen') {
+        $orders = $db->query(
+            "SELECT * FROM `orders` ORDER BY `ordernummer` DESC"
+        )->fetchAll(PDO::FETCH_ASSOC);
     }
 } else {
     $actief = 'categorieen';
@@ -235,6 +255,25 @@ if (str_starts_with($actief, 'cat-')) {
         </div>
     </div>
 
+    <!-- Bestelling afgerond modal -->
+    <div class="modal-overlay" id="orderDoneModal">
+        <div class="modal">
+            <h3><i class="fa-solid fa-check-circle" style="color:#2d8a3e"></i> Bestelling afronden</h3>
+            <p>Markeer bestelling <strong id="orderDoneNr"></strong> van <strong id="orderDoneNaam"></strong> als afgerond?
+                <br>De bestelling wordt uit de lijst verwijderd.</p>
+            <form method="POST" action="admin.php?tab=bestellingen">
+                <input type="hidden" name="delete_order"    value="1">
+                <input type="hidden" name="delete_order_id" id="orderDoneId">
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-cancel" onclick="closeOrderModal()">Annuleren</button>
+                    <button type="submit" class="btn btn-save">
+                        <i class="fa-solid fa-check"></i> Ja, afgerond
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Delete category modal -->
     <div class="modal-overlay" id="deleteCatModal">
         <div class="modal">
@@ -264,6 +303,10 @@ if (str_starts_with($actief, 'cat-')) {
 
         <!-- SIDEBAR -->
         <nav class="sidebar">
+            <a href="admin.php?tab=bestellingen" class="<?= $actief === 'bestellingen' ? 'active' : '' ?>">
+                <i class="fa-solid fa-receipt"></i> Bestellingen
+                <span class="count-badge"><?= $orderCount ?></span>
+            </a>
             <a href="admin.php?tab=categorieen" class="<?= $actief === 'categorieen' ? 'active' : '' ?>">
                 <i class="fa-solid fa-folder-open"></i> Categorieën
                 <span class="count-badge"><?= count($categorieen) ?></span>
@@ -285,7 +328,78 @@ if (str_starts_with($actief, 'cat-')) {
                 <div class="alert <?= $msgType ?>"><?= htmlspecialchars($msgText) ?></div>
             <?php endif; ?>
 
-            <?php if ($actief === 'categorieen'): ?>
+            <?php if ($actief === 'bestellingen'): ?>
+                <!-- ══════════════════════════════════════════
+                     TAB: BESTELLINGEN
+                ══════════════════════════════════════════ -->
+                <div class="page-title">
+                    <i class="fa-solid fa-receipt"></i> Bestellingen
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h2><?= $orderCount ?> bestelling<?= $orderCount !== 1 ? 'en' : '' ?></h2>
+                    </div>
+                    <?php if (count($orders) === 0): ?>
+                        <p style="padding: 1.5rem; color: var(--clr-text-muted);">Nog geen bestellingen geplaatst.</p>
+                    <?php else: ?>
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Naam</th>
+                            <th>Telefoon</th>
+                            <th>Ophaaltijd</th>
+                            <th>Producten</th>
+                            <th>Totaal</th>
+                            <th>Opmerking</th>
+                            <th>Datum</th>
+                            <th>Actie</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($orders as $order): ?>
+                            <?php
+                                // Producten staan als tekst opgeslagen, één product per regel
+                                $productenRegels = array_filter(explode("\n", $order['producten'] ?? ''));
+                                $ophaaltijd = substr($order['ophaaltijd'], 0, 5); // HH:MM
+                                $datum = isset($order['besteldatum'])
+                                    ? date('d-m-Y H:i', strtotime($order['besteldatum']))
+                                    : '—';
+                            ?>
+                            <tr>
+                                <td><strong>#<?= (int)$order['ordernummer'] ?></strong></td>
+                                <td><?= htmlspecialchars($order['klant_naam'] ?? '') ?></td>
+                                <td><?= htmlspecialchars($order['telefoon'] ?? '—') ?></td>
+                                <td><?= htmlspecialchars($ophaaltijd) ?> uur</td>
+                                <td>
+                                    <?php if (count($productenRegels) > 0): ?>
+                                        <ul style="list-style:none;padding:0;margin:0;font-size:0.85rem;line-height:1.7;">
+                                        <?php foreach ($productenRegels as $regel): ?>
+                                            <li><?= htmlspecialchars($regel) ?></li>
+                                        <?php endforeach; ?>
+                                        </ul>
+                                    <?php else: ?>
+                                        <span class="maat-empty">—</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><strong>&euro;<?= number_format((float)($order['totaal'] ?? 0), 2, ',', '') ?></strong></td>
+                                <td><?= htmlspecialchars($order['opmerking'] ?? '') ?: '<span class="maat-empty">—</span>' ?></td>
+                                <td style="font-size:0.85rem;"><?= $datum ?></td>
+                                <td>
+                                    <button type="button" class="btn btn-save"
+                                            onclick="openOrderModal(<?= (int)$order['ordernummer'] ?>, '<?= htmlspecialchars(addslashes($order['klant_naam']), ENT_QUOTES) ?>')">
+                                        <i class="fa-solid fa-check"></i> Afgerond
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <?php endif; ?>
+                </div>
+
+            <?php elseif ($actief === 'categorieen'): ?>
                 <!-- ══════════════════════════════════════════
                      TAB: CATEGORIEËN BEHEREN
                 ══════════════════════════════════════════ -->
@@ -480,6 +594,20 @@ if (str_starts_with($actief, 'cat-')) {
         }
         document.getElementById('deleteModal').addEventListener('click', function(e) {
             if (e.target === this) closeModal();
+        });
+
+        // Bestelling afgerond modal
+        function openOrderModal(id, naam) {
+            document.getElementById('orderDoneId').value = id;
+            document.getElementById('orderDoneNr').textContent = '#' + id;
+            document.getElementById('orderDoneNaam').textContent = naam;
+            document.getElementById('orderDoneModal').classList.add('open');
+        }
+        function closeOrderModal() {
+            document.getElementById('orderDoneModal').classList.remove('open');
+        }
+        document.getElementById('orderDoneModal').addEventListener('click', function(e) {
+            if (e.target === this) closeOrderModal();
         });
 
         // Categorie verwijder modal

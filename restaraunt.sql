@@ -55,19 +55,25 @@ INSERT INTO `categorieen` (`id`, `naam`, `icoon`, `volgorde`) VALUES
 --
 
 CREATE TABLE `orders` (
-  `ordernummer` int NOT NULL,
-  `klant-naam` text NOT NULL,
-  `ophaaltijd` time NOT NULL
+  `ordernummer` int NOT NULL AUTO_INCREMENT,
+  `klant_naam` text NOT NULL,
+  `telefoon` varchar(50) NOT NULL DEFAULT '',
+  `ophaaltijd` time NOT NULL,
+  `opmerking` text DEFAULT NULL,
+  `producten` text NOT NULL DEFAULT '[]',
+  `totaal` decimal(8,2) NOT NULL DEFAULT '0.00',
+  `besteldatum` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`ordernummer`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
 -- Gegevens worden geëxporteerd voor tabel `orders`
 --
 
-INSERT INTO `orders` (`ordernummer`, `klant-naam`, `ophaaltijd`) VALUES
-(69, 'Karlen Dagdas', '17:45:00'),
-(67, 'Kerem chatchatrian', '19:00:00'),
-(21, 'Abshir Adani', '18:00:00');
+INSERT INTO `orders` (`ordernummer`, `klant_naam`, `telefoon`, `ophaaltijd`, `opmerking`, `producten`, `totaal`, `besteldatum`) VALUES
+(21, 'Abshir Adani', '06-11111111', '18:00:00', NULL, '[{"name":"Friet Zonder","price":2.85,"quantity":1}]', 2.85, '2026-04-07 17:45:00'),
+(67, 'Kerem Chatchatrian', '06-22222222', '19:00:00', 'Extra saus', '[{"name":"Kroket","price":2.25,"quantity":2}]', 4.50, '2026-04-07 18:30:00'),
+(69, 'Karlen Dagdas', '06-33333333', '17:45:00', NULL, '[{"name":"Hamburger","price":4.50,"quantity":1},{"name":"Friet Met","price":3.20,"quantity":1}]', 7.70, '2026-04-07 17:00:00');
 
 -- --------------------------------------------------------
 
@@ -279,6 +285,12 @@ ALTER TABLE `producten`
 --
 ALTER TABLE `categorieen`
   MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+
+--
+-- AUTO_INCREMENT voor een tabel `orders`
+--
+ALTER TABLE `orders`
+  MODIFY `ordernummer` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=70;
 
 --
 -- AUTO_INCREMENT voor een tabel `producten`

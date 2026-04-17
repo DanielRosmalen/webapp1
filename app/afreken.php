@@ -1,3 +1,103 @@
+<?php
+session_start();
+
+// Verbinding maken met de database
+try {
+    $db = new PDO(
+        'mysql:host=mysql_db;dbname=restaraunt;charset=utf8',
+        'root',
+        'rootpassword',
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+} catch (PDOException $e) {
+    die("Verbinding mislukt: " . $e->getMessage());
+}
+
+$foutmelding = '';
+
+// Als het formulier is verstuurd
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $naam       = trim($_POST['naam']       ?? '');
+    $telefoon   = trim($_POST['telefoon']   ?? '');
+    $ophaaltijd = trim($_POST['ophaaltijd'] ?? '');
+    $opmerking  = trim($_POST['opmerking']  ?? '');
+
+    // Producten komen binnen als losse lijsten (ingevuld door JavaScript)
+    $namen     = $_POST['product_naam']   ?? [];
+    $prijzen   = $_POST['product_prijs']  ?? [];
+    $aantallen = $_POST['product_aantal'] ?? [];
+
+    if ($naam !== '' && $telefoon !== '' && $ophaaltijd !== '' && count($namen) > 0) {
+
+        // Totaalprijs berekenen
+        $totaal = 0;
+        for ($i = 0; $i < count($namen); $i++) {
+            $totaal += (float)$prijzen[$i] * (int)$aantallen[$i];
+        }
+
+        // Producten opslaan als leesbare tekst voor de admin
+        $productenTekst = '';
+        for ($i = 0; $i < count($namen); $i++) {
+            $productenTekst .= (int)$aantallen[$i] . 'x ' . $namen[$i] . ' (€' . number_format((float)$prijzen[$i], 2, ',', '') . ')' . "\n";
+        }
+
+        // Bestelling opslaan in de database
+        $stmt = $db->prepare(
+            "INSERT INTO `orders` (`klant_naam`, `telefoon`, `ophaaltijd`, `opmerking`, `producten`, `totaal`)
+             VALUES (:naam, :telefoon, :ophaaltijd, :opmerking, :producten, :totaal)"
+        );
+        $stmt->execute([
+            ':naam'       => $naam,
+            ':telefoon'   => $telefoon,
+            ':ophaaltijd' => $ophaaltijd . ':00',
+            ':opmerking'  => $opmerking !== '' ? $opmerking : null,
+            ':producten'  => trim($productenTekst),
+            ':totaal'     => round($totaal, 2),
+        ]);
+
+        header('Location: afreken.php?succes=1&tijd=' . urlencode($ophaaltijd));
+        exit;
+    }
+
+    $foutmelding = 'Er ging iets mis. Controleer je gegevens en probeer het opnieuw.';
+}
+
+// Ophaaltijden genereren
+// Openingstijden per dag (0 = zondag, 6 = zaterdag)
+$openingstijden = [
+    0 => ['open' => '12:00', 'sluit' => '21:00'],
+    1 => ['open' => '11:00', 'sluit' => '21:00'],
+    2 => ['open' => '11:00', 'sluit' => '21:00'],
+    3 => ['open' => '11:00', 'sluit' => '21:00'],
+    4 => ['open' => '11:00', 'sluit' => '21:00'],
+    5 => ['open' => '11:00', 'sluit' => '21:00'],
+    6 => ['open' => '11:00', 'sluit' => '22:00'],
+];
+
+$dagNr = (int)date('w');
+$schema = $openingstijden[$dagNr];
+
+// strtotime zet een tijdstip om naar een getal (seconden) waar PHP mee kan rekenen
+$openTijd  = strtotime($schema['open']);
+$sluitTijd = strtotime($schema['sluit']);
+
+// Vroegste ophaaltijd = nu + 15 minuten, afgerond naar kwartier (900 seconden)
+$vroegste  = ceil((time() + 15 * 60) / 900) * 900;
+$startTijd = max($vroegste, $openTijd);
+
+$gesloten         = $startTijd >= $sluitTijd;
+$ophaaltijdOpties = [];
+if (!$gesloten) {
+    // Loop van starttijd tot sluitingstijd, steeds 15 minuten (900 seconden) erbij
+    for ($t = $startTijd; $t < $sluitTijd; $t += 900) {
+        $ophaaltijdOpties[] = date('H:i', $t); // zet het getal terug naar "HH:MM"
+    }
+}
+
+// Bevestigingspagina na succesvolle bestelling
+$succes     = isset($_GET['succes']) && $_GET['succes'] === '1';
+$ophaaltijd = htmlspecialchars($_GET['tijd'] ?? '');
+?>
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -9,222 +109,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;700;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <link rel="stylesheet" href="Styling/styles.css" />
-    <style>
-        /* ── Checkout-specifieke stijlen ── */
-        .checkout-section {
-            padding: var(--space-3xl) 0;
-            min-height: calc(100vh - var(--header-height) - 200px);
-        }
-
-        .checkout-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: var(--space-xl);
-        }
-
-        @media (min-width: 768px) {
-            .checkout-grid {
-                grid-template-columns: 1fr 1fr;
-                align-items: start;
-            }
-        }
-
-        /* Bestellingoverzicht */
-        .order-summary {
-            background: var(--clr-surface);
-            border: var(--border);
-            border-radius: var(--radius-md);
-            padding: var(--space-lg);
-        }
-
-        .order-summary h2 {
-            font-family: var(--font-heading);
-            font-size: 1.25rem;
-            margin-bottom: var(--space-md);
-            display: flex;
-            align-items: center;
-            gap: var(--space-sm);
-            color: var(--clr-dark);
-        }
-
-        .order-summary h2 i {
-            color: var(--clr-red);
-        }
-
-        .summary-list {
-            list-style: none;
-            margin-bottom: var(--space-md);
-        }
-
-        .summary-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: var(--space-sm) 0;
-            border-bottom: 1px solid var(--clr-light);
-            font-size: 0.95rem;
-        }
-
-        .summary-item:last-child {
-            border-bottom: none;
-        }
-
-        .summary-item-name {
-            flex: 1;
-            color: var(--clr-dark);
-        }
-
-        .summary-item-qty {
-            background: var(--clr-light);
-            border-radius: var(--radius-sm);
-            padding: 2px 8px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            margin: 0 var(--space-sm);
-            color: var(--clr-text-muted);
-        }
-
-        .summary-item-price {
-            font-weight: 600;
-            color: var(--clr-dark);
-            white-space: nowrap;
-        }
-
-        .summary-total {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding-top: var(--space-md);
-            border-top: 2px solid var(--clr-brown);
-            font-size: 1.1rem;
-            font-weight: 700;
-        }
-
-        .summary-total strong {
-            color: var(--clr-red);
-            font-size: 1.3rem;
-        }
-
-        .cart-empty-checkout {
-            text-align: center;
-            padding: var(--space-xl) 0;
-            color: var(--clr-text-muted);
-        }
-
-        .cart-empty-checkout i {
-            font-size: 2.5rem;
-            margin-bottom: var(--space-md);
-            color: var(--clr-light);
-            display: block;
-        }
-
-        /* Formulier */
-        .checkout-form-card {
-            background: var(--clr-white);
-            border: var(--border);
-            border-radius: var(--radius-md);
-            padding: var(--space-lg);
-            box-shadow: var(--shadow-sm);
-        }
-
-        .checkout-form-card h2 {
-            font-family: var(--font-heading);
-            font-size: 1.25rem;
-            margin-bottom: var(--space-lg);
-            display: flex;
-            align-items: center;
-            gap: var(--space-sm);
-            color: var(--clr-dark);
-        }
-
-        .checkout-form-card h2 i {
-            color: var(--clr-red);
-        }
-
-        .form-group {
-            margin-bottom: var(--space-md);
-        }
-
-        .form-group label {
-            display: block;
-            font-weight: 600;
-            font-size: 0.9rem;
-            margin-bottom: var(--space-xs);
-            color: var(--clr-dark);
-        }
-
-        .form-group label .required {
-            color: var(--clr-red);
-            margin-left: 2px;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 0.65rem var(--space-md);
-            border: 2px solid var(--clr-light);
-            border-radius: var(--radius-sm);
-            font-family: var(--font-body);
-            font-size: 1rem;
-            color: var(--clr-dark);
-            background: var(--clr-white);
-            transition: border-color var(--transition);
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: var(--clr-red);
-        }
-
-        textarea.form-control {
-            resize: vertical;
-            min-height: 90px;
-        }
-
-        .gesloten-melding {
-            background: var(--clr-light);
-            border: 2px solid var(--clr-brown);
-            border-radius: var(--radius-sm);
-            padding: var(--space-sm) var(--space-md);
-            font-size: 0.9rem;
-            color: var(--clr-text-muted);
-            display: flex;
-            align-items: center;
-            gap: var(--space-sm);
-        }
-
-        /* Bevestiging scherm */
-        .bevestiging {
-            display: none;
-            text-align: center;
-            padding: var(--space-2xl) var(--space-lg);
-        }
-
-        .bevestiging-icon {
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(135deg, var(--clr-red), var(--clr-red-dark));
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto var(--space-lg);
-            font-size: 2rem;
-            color: var(--clr-white);
-        }
-
-        .bevestiging h2 {
-            font-family: var(--font-heading);
-            font-size: 1.75rem;
-            margin-bottom: var(--space-sm);
-            color: var(--clr-dark);
-        }
-
-        .bevestiging p {
-            color: var(--clr-text-muted);
-            max-width: 380px;
-            margin: 0 auto var(--space-lg);
-        }
-    </style>
+    <link rel="stylesheet" href="Styling/afreken.css" />
 </head>
 <body>
 
@@ -262,83 +147,109 @@
                 <p class="section-sub">Controleer je bestelling en vul je gegevens in.</p>
             </div>
 
-            <!-- Bevestiging (verborgen tot na verzenden) -->
-            <div class="bevestiging" id="bevestiging">
-                <div class="bevestiging-icon">
-                    <i class="fa-solid fa-check"></i>
-                </div>
-                <h2>Bestelling geplaatst!</h2>
-                <p>Bedankt voor je bestelling bij Snackcorner Gennep. We gaan direct aan de slag!</p>
-                <a href="index.php" class="btn btn-primary btn-large">
-                    <i class="fa-solid fa-arrow-left"></i> Terug naar het menu
-                </a>
-            </div>
-
-            <!-- Checkout grid (verborgen na verzenden) -->
-            <div class="checkout-grid" id="checkoutGrid">
-
-                <!-- Linkerkolom: bestellingoverzicht -->
-                <div class="order-summary">
-                    <h2><i class="fa-solid fa-basket-shopping"></i> Jouw bestelling</h2>
-
-                    <div id="summaryEmpty" class="cart-empty-checkout">
-                        <i class="fa-solid fa-plate-wheat"></i>
-                        <p>Je winkelwagen is leeg.</p>
-                        <a href="index.php#menu" class="btn btn-primary" style="margin-top:var(--space-md)">Terug naar het menu</a>
+            <?php if ($succes): ?>
+                <!-- Bevestigingsscherm -->
+                <div class="bevestiging">
+                    <div class="bevestiging-icon">
+                        <i class="fa-solid fa-check"></i>
                     </div>
-
-                    <ul class="summary-list" id="summaryList"></ul>
-
-                    <div class="summary-total" id="summaryTotal" style="display:none;">
-                        <span>Totaal</span>
-                        <strong id="summaryTotalBedrag">&euro;0,00</strong>
-                    </div>
+                    <h2>Bestelling geplaatst!</h2>
+                    <p>
+                        Bedankt voor je bestelling bij Snackcorner Gennep.
+                        <?php if ($ophaaltijd): ?>
+                            Je bestelling is klaar om <strong><?= $ophaaltijd ?></strong> uur!
+                        <?php else: ?>
+                            We gaan direct aan de slag!
+                        <?php endif; ?>
+                    </p>
+                    <a href="index.php" class="btn btn-primary btn-large">
+                        <i class="fa-solid fa-arrow-left"></i> Terug naar het menu
+                    </a>
                 </div>
 
-                <!-- Rechterkolom: formulier -->
-                <div class="checkout-form-card" id="formCard">
-                    <h2><i class="fa-solid fa-user"></i> Jouw gegevens</h2>
+            <?php else: ?>
 
-                    <form id="checkoutForm" novalidate>
+                <?php if ($foutmelding): ?>
+                    <div class="checkout-error">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <?= htmlspecialchars($foutmelding) ?>
+                    </div>
+                <?php endif; ?>
 
-                        <div class="form-group">
-                            <label for="naam">Naam <span class="required">*</span></label>
-                            <input type="text" id="naam" name="naam" class="form-control"
-                                   placeholder="Bijv. Jan de Vries" required autocomplete="name" />
+                <div class="checkout-grid" id="checkoutGrid">
+
+                    <!-- Linkerkolom: bestellingoverzicht (gevuld door JavaScript via localStorage) -->
+                    <div class="order-summary">
+                        <h2><i class="fa-solid fa-basket-shopping"></i> Jouw bestelling</h2>
+                        <div id="summaryEmpty" class="cart-empty-checkout">
+                            <i class="fa-solid fa-plate-wheat"></i>
+                            <p>Je winkelwagen is leeg.</p>
+                            <a href="index.php#menu" class="btn btn-primary" style="margin-top:var(--space-md)">Terug naar het menu</a>
                         </div>
-
-                        <div class="form-group">
-                            <label for="telefoon">Telefoonnummer <span class="required">*</span></label>
-                            <input type="tel" id="telefoon" name="telefoon" class="form-control"
-                                   placeholder="Bijv. 06-12345678" required autocomplete="tel" />
+                        <ul class="summary-list" id="summaryList"></ul>
+                        <div class="summary-total" id="summaryTotal" style="display:none;">
+                            <span>Totaal</span>
+                            <strong id="summaryTotalBedrag">&euro;0,00</strong>
                         </div>
+                    </div>
 
-                        <div class="form-group">
-                            <label for="ophaaltijd">Ophaaltijd <span class="required">*</span></label>
-                            <select id="ophaaltijd" name="ophaaltijd" class="form-control" required></select>
-                            <div class="gesloten-melding" id="geslotenMelding" style="display:none;">
-                                <i class="fa-solid fa-clock"></i>
-                                <span>We zijn vandaag gesloten. Kom morgen langs!</span>
+                    <!-- Rechterkolom: formulier -->
+                    <div class="checkout-form-card" id="formCard">
+                        <h2><i class="fa-solid fa-user"></i> Jouw gegevens</h2>
+
+                        <form id="checkoutForm" method="POST" action="afreken.php">
+                            <!-- JavaScript voegt hier losse productvelden aan toe bij verzenden -->
+
+                            <div class="form-group">
+                                <label for="naam">Naam <span class="required">*</span></label>
+                                <input type="text" id="naam" name="naam" class="form-control"
+                                       placeholder="Bijv. Jan de Vries" required autocomplete="name"
+                                       value="<?= htmlspecialchars($_POST['naam'] ?? '') ?>" />
                             </div>
-                        </div>
 
-                        <div class="form-group">
-                            <label for="opmerking">Opmerkingen <small style="font-weight:400;color:var(--clr-text-muted)">(optioneel)</small></label>
-                            <textarea id="opmerking" name="opmerking" class="form-control"
-                                      placeholder="Bijv. extra saus, geen ui..."></textarea>
-                        </div>
+                            <div class="form-group">
+                                <label for="telefoon">Telefoonnummer <span class="required">*</span></label>
+                                <input type="tel" id="telefoon" name="telefoon" class="form-control"
+                                       placeholder="Bijv. 06-12345678" required autocomplete="tel"
+                                       value="<?= htmlspecialchars($_POST['telefoon'] ?? '') ?>" />
+                            </div>
 
-                        <button type="submit" class="btn btn-primary btn-block" id="plaatsBtn">
-                            <i class="fa-solid fa-check"></i> Bestelling bevestigen
-                        </button>
-                        <a href="index.php" class="btn btn-ghost btn-block" style="margin-top:var(--space-sm);text-align:center;display:block;">
-                            <i class="fa-solid fa-arrow-left"></i> Terug naar het menu
-                        </a>
+                            <div class="form-group">
+                                <label for="ophaaltijd">Ophaaltijd <span class="required">*</span></label>
+                                <?php if ($gesloten): ?>
+                                    <div class="gesloten-melding">
+                                        <i class="fa-solid fa-clock"></i>
+                                        <span>We zijn vandaag gesloten. Kom morgen langs!</span>
+                                    </div>
+                                <?php else: ?>
+                                    <select id="ophaaltijd" name="ophaaltijd" class="form-control" required>
+                                        <?php foreach ($ophaaltijdOpties as $tijd): ?>
+                                            <option value="<?= $tijd ?>"><?= $tijd ?> uur</option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                <?php endif; ?>
+                            </div>
 
-                    </form>
+                            <div class="form-group">
+                                <label for="opmerking">Opmerkingen <small style="font-weight:400;color:var(--clr-text-muted)">(optioneel)</small></label>
+                                <textarea id="opmerking" name="opmerking" class="form-control"
+                                          placeholder="Bijv. extra saus, geen ui..."><?= htmlspecialchars($_POST['opmerking'] ?? '') ?></textarea>
+                            </div>
+
+                            <?php if (!$gesloten): ?>
+                                <button type="submit" class="btn btn-primary btn-block">
+                                    <i class="fa-solid fa-check"></i> Bestelling bevestigen
+                                </button>
+                            <?php endif; ?>
+                            <a href="index.php" class="btn btn-ghost btn-block" style="margin-top:var(--space-sm);text-align:center;display:block;">
+                                <i class="fa-solid fa-arrow-left"></i> Terug naar het menu
+                            </a>
+                        </form>
+                    </div>
+
                 </div>
+            <?php endif; ?>
 
-            </div>
         </div>
     </section>
 </main>
@@ -356,184 +267,10 @@
             <a href="index.php#locatie">Locatie</a>
             <a href="index.php#contact">Contact</a>
         </div>
-        <p class="footer-copy">&copy; <span id="year"></span> Snackcorner Gennep. Alle rechten voorbehouden.</p>
+        <p class="footer-copy">&copy; <?= date('Y') ?> Snackcorner Gennep. Alle rechten voorbehouden.</p>
     </div>
 </footer>
 
-<div class="toast" id="toast" aria-live="assertive" aria-atomic="true"></div>
-
-<script>
-'use strict';
-
-document.addEventListener('DOMContentLoaded', function () {
-
-    // ── Elementen ──────────────────────────────────────────
-    var summaryList      = document.getElementById('summaryList');
-    var summaryEmpty     = document.getElementById('summaryEmpty');
-    var summaryTotal     = document.getElementById('summaryTotal');
-    var summaryBedrag    = document.getElementById('summaryTotalBedrag');
-    var checkoutGrid     = document.getElementById('checkoutGrid');
-    var bevestiging      = document.getElementById('bevestiging');
-    var checkoutForm     = document.getElementById('checkoutForm');
-    var ophaaltijdSelect = document.getElementById('ophaaltijd');
-    var geslotenMelding  = document.getElementById('geslotenMelding');
-    var toastEl          = document.getElementById('toast');
-    var yearSpan         = document.getElementById('year');
-    var hamburgerBtn     = document.getElementById('hamburger');
-    var mobileNav        = document.getElementById('mobileNav');
-
-    if (yearSpan) yearSpan.textContent = new Date().getFullYear();
-
-    // ── Hamburger ──────────────────────────────────────────
-    hamburgerBtn.addEventListener('click', function () {
-        var isOpen = hamburgerBtn.classList.toggle('open');
-        mobileNav.classList.toggle('open', isOpen);
-        hamburgerBtn.setAttribute('aria-expanded', String(isOpen));
-        mobileNav.setAttribute('aria-hidden', String(!isOpen));
-    });
-
-    // ── Ophaaltijden genereren ─────────────────────────────
-    // Openingstijden: 0=zo,1=ma,...,6=za
-    var openingstijden = {
-        0: { open: '12:00', sluit: '21:00' }, // zondag
-        1: { open: '11:00', sluit: '21:00' }, // maandag
-        2: { open: '11:00', sluit: '21:00' }, // dinsdag
-        3: { open: '11:00', sluit: '21:00' }, // woensdag
-        4: { open: '11:00', sluit: '21:00' }, // donderdag
-        5: { open: '11:00', sluit: '21:00' }, // vrijdag
-        6: { open: '11:00', sluit: '22:00' }  // zaterdag
-    };
-
-    function tijdNaarMinuten(tijdStr) {
-        var delen = tijdStr.split(':');
-        return parseInt(delen[0], 10) * 60 + parseInt(delen[1], 10);
-    }
-
-    function minutenNaarTijd(min) {
-        var u = Math.floor(min / 60);
-        var m = min % 60;
-        return (u < 10 ? '0' : '') + u + ':' + (m < 10 ? '0' : '') + m;
-    }
-
-    var nu      = new Date();
-    var dagNr   = nu.getDay();
-    var schema  = openingstijden[dagNr];
-    var huidigeMinuten = nu.getHours() * 60 + nu.getMinutes();
-
-    var openMin  = tijdNaarMinuten(schema.open);
-    var sluitMin = tijdNaarMinuten(schema.sluit);
-
-    // Eerste beschikbare slot: 15 min vooruit (minimale bereidingstijd),
-    // afgerond naar het eerstvolgende kwartier
-    var vroegsteSlot = huidigeMinuten + 15;
-    var rest = vroegsteSlot % 15;
-    if (rest !== 0) vroegsteSlot += (15 - rest);
-
-    var startMin = Math.max(vroegsteSlot, openMin);
-
-    if (startMin >= sluitMin) {
-        // Vandaag geen tijden meer beschikbaar
-        ophaaltijdSelect.style.display = 'none';
-        geslotenMelding.style.display  = 'flex';
-        ophaaltijdSelect.required      = false;
-    } else {
-        for (var t = startMin; t < sluitMin; t += 15) {
-            var opt = document.createElement('option');
-            opt.value       = minutenNaarTijd(t);
-            opt.textContent = minutenNaarTijd(t) + ' uur';
-            ophaaltijdSelect.appendChild(opt);
-        }
-    }
-
-    // ── Cart uit localStorage lezen ────────────────────────
-    var cartItems = [];
-    try {
-        cartItems = JSON.parse(localStorage.getItem('snackcorner_cart') || '[]');
-    } catch (e) {
-        cartItems = [];
-    }
-
-    // ── Overzicht renderen ─────────────────────────────────
-    if (cartItems.length === 0) {
-        summaryEmpty.style.display = 'block';
-        summaryTotal.style.display = 'none';
-        document.getElementById('formCard').style.display = 'none';
-    } else {
-        summaryEmpty.style.display = 'none';
-        summaryTotal.style.display = 'flex';
-
-        var totaal = 0;
-        cartItems.forEach(function (item) {
-            var li = document.createElement('li');
-            li.className = 'summary-item';
-            var regelPrijs = (item.price * item.quantity).toFixed(2).replace('.', ',');
-            totaal += item.price * item.quantity;
-            li.innerHTML =
-                '<span class="summary-item-name">' + escapeHTML(item.name) + '</span>' +
-                '<span class="summary-item-qty">x' + item.quantity + '</span>' +
-                '<span class="summary-item-price">&#8364;' + regelPrijs + '</span>';
-            summaryList.appendChild(li);
-        });
-
-        summaryBedrag.textContent = '\u20ac' + totaal.toFixed(2).replace('.', ',');
-    }
-
-    // ── Formulier verzenden ────────────────────────────────
-    checkoutForm.addEventListener('submit', function (e) {
-        e.preventDefault();
-
-        var naam      = document.getElementById('naam').value.trim();
-        var telefoon  = document.getElementById('telefoon').value.trim();
-        var ophaaltijd = ophaaltijdSelect.value;
-
-        if (!naam) {
-            showToast('Vul je naam in.');
-            document.getElementById('naam').focus();
-            return;
-        }
-        if (!telefoon) {
-            showToast('Vul je telefoonnummer in.');
-            document.getElementById('telefoon').focus();
-            return;
-        }
-        if (ophaaltijdSelect.required && !ophaaltijd) {
-            showToast('Kies een ophaaltijd.');
-            ophaaltijdSelect.focus();
-            return;
-        }
-        if (cartItems.length === 0) {
-            showToast('Je winkelwagen is leeg.');
-            return;
-        }
-
-        // Bestelling "geplaatst" → leeg cart en toon bevestiging
-        localStorage.removeItem('snackcorner_cart');
-
-        // Toon gekozen ophaaltijd in bevestiging
-        var bevestigingP = document.querySelector('.bevestiging p');
-        if (bevestigingP && ophaaltijd) {
-            bevestigingP.textContent = 'Bedankt voor je bestelling bij Snackcorner Gennep. Je bestelling is klaar om ' + ophaaltijd + ' uur!';
-        }
-
-        checkoutGrid.style.display = 'none';
-        bevestiging.style.display  = 'block';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-
-    // ── Hulpfuncties ───────────────────────────────────────
-    function showToast(message) {
-        toastEl.textContent = message;
-        toastEl.classList.add('show');
-        setTimeout(function () { toastEl.classList.remove('show'); }, 2500);
-    }
-
-    function escapeHTML(str) {
-        var d = document.createElement('div');
-        d.textContent = String(str);
-        return d.innerHTML;
-    }
-
-});
-</script>
+<script src="afreken.js"></script>
 </body>
 </html>
