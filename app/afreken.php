@@ -17,10 +17,11 @@ $foutmelding = '';
 
 // Als het formulier is verstuurd
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $naam       = trim($_POST['naam']       ?? '');
-    $telefoon   = trim($_POST['telefoon']   ?? '');
-    $ophaaltijd = trim($_POST['ophaaltijd'] ?? '');
-    $opmerking  = trim($_POST['opmerking']  ?? '');
+    $naam          = trim($_POST['naam']          ?? '');
+    $telefoon      = trim($_POST['telefoon']      ?? '');
+    $ophaaltijd    = trim($_POST['ophaaltijd']    ?? '');
+    $opmerking     = trim($_POST['opmerking']     ?? '');
+    $betaalmethode = in_array($_POST['betaalmethode'] ?? '', ['contant', 'pin']) ? $_POST['betaalmethode'] : 'contant';
 
     // Producten komen binnen als losse lijsten (ingevuld door JavaScript)
     $namen     = $_POST['product_naam']   ?? [];
@@ -43,16 +44,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Bestelling opslaan in de database
         $stmt = $db->prepare(
-            "INSERT INTO `orders` (`klant_naam`, `telefoon`, `ophaaltijd`, `opmerking`, `producten`, `totaal`)
-             VALUES (:naam, :telefoon, :ophaaltijd, :opmerking, :producten, :totaal)"
+            "INSERT INTO `orders` (`klant_naam`, `telefoon`, `ophaaltijd`, `opmerking`, `producten`, `totaal`, `betaalmethode`)
+             VALUES (:naam, :telefoon, :ophaaltijd, :opmerking, :producten, :totaal, :betaalmethode)"
         );
         $stmt->execute([
-            ':naam'       => $naam,
-            ':telefoon'   => $telefoon,
-            ':ophaaltijd' => $ophaaltijd . ':00',
-            ':opmerking'  => $opmerking !== '' ? $opmerking : null,
-            ':producten'  => trim($productenTekst),
-            ':totaal'     => round($totaal, 2),
+            ':naam'          => $naam,
+            ':telefoon'      => $telefoon,
+            ':ophaaltijd'    => $ophaaltijd . ':00',
+            ':opmerking'     => $opmerking !== '' ? $opmerking : null,
+            ':producten'     => trim($productenTekst),
+            ':totaal'        => round($totaal, 2),
+            ':betaalmethode' => $betaalmethode,
         ]);
 
         header('Location: afreken.php?succes=1&tijd=' . urlencode($ophaaltijd));
@@ -234,6 +236,14 @@ $ophaaltijd = htmlspecialchars($_GET['tijd'] ?? '');
                                 <label for="opmerking">Opmerkingen <small style="font-weight:400;color:var(--clr-text-muted)">(optioneel)</small></label>
                                 <textarea id="opmerking" name="opmerking" class="form-control"
                                           placeholder="Bijv. extra saus, geen ui..."><?= htmlspecialchars($_POST['opmerking'] ?? '') ?></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="betaalmethode">Betaalmethode <span class="required">*</span></label>
+                                <select id="betaalmethode" name="betaalmethode" class="form-control" required>
+                                    <option value="contant">Contant bij ophalen</option>
+                                    <option value="pin">Pinnen bij ophalen</option>
+                                </select>
                             </div>
 
                             <?php if (!$gesloten): ?>

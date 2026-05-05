@@ -1,5 +1,18 @@
 'use strict';
 
+class DagAanbieding extends HTMLElement {
+    connectedCallback() {
+        const snack = this.getAttribute('snack');
+        this.innerHTML = `
+            <div style="background:#FFC82C; color:#212529; padding:12px 20px; border-radius:8px; font-weight:bold; font-size:1rem; display:inline-block; margin:8px 0;">
+                Aanbieding: ${snack}!
+            </div>
+        `;
+    }
+}
+
+customElements.define('dag-aanbieding', DagAanbieding);
+
 document.addEventListener('DOMContentLoaded', function () {
 
     /* ==========================================================

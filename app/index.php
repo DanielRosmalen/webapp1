@@ -151,6 +151,11 @@ function slug(string $str): string {
         </div>
     </section>
 
+    <!-- DAG AANBIEDING -->
+    <div style="text-align:center; padding: 16px;">
+        <dag-aanbieding snack="Frietje Speciaal"></dag-aanbieding>
+    </div>
+
     <!-- MENU SECTION -->
     <section class="menu-section" id="menu">
         <div class="container">

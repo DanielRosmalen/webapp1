@@ -62,6 +62,8 @@ CREATE TABLE `orders` (
   `opmerking` text DEFAULT NULL,
   `producten` text NOT NULL DEFAULT '[]',
   `totaal` decimal(8,2) NOT NULL DEFAULT '0.00',
+  `betaalmethode` enum('contant','pin') NOT NULL DEFAULT 'contant',
+  `betaalstatus` enum('niet_betaald','betaald') NOT NULL DEFAULT 'niet_betaald',
   `besteldatum` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`ordernummer`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -12,3 +12,8 @@ ALTER TABLE `orders`
 ALTER TABLE `orders`
   ADD PRIMARY KEY (`ordernummer`),
   MODIFY `ordernummer` INT NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=70;
+
+-- Betaalmethode en betaalstatus toevoegen
+ALTER TABLE `orders`
+  ADD COLUMN `betaalmethode` ENUM('contant','pin')              NOT NULL DEFAULT 'contant'     AFTER `totaal`,
+  ADD COLUMN `betaalstatus`  ENUM('niet_betaald','betaald')     NOT NULL DEFAULT 'niet_betaald' AFTER `betaalmethode`;

@@ -86,6 +86,15 @@ if ($_SESSION['admin'] ?? false) {
         exit;
     }
 
+    // ─── BESTELLING BETAALD MARKEREN ─────────────────────────
+    if (isset($_POST['mark_paid'])) {
+        $db->prepare("UPDATE `orders` SET betaalstatus = 'betaald' WHERE ordernummer = :id")
+                ->execute([':id' => (int)$_POST['mark_paid_id']]);
+        $saveMsg = 'success:Bestelling gemarkeerd als betaald.';
+        header('Location: admin.php?tab=bestellingen');
+        exit;
+    }
+
     // ─── BESTELLING AFGEROND / VERWIJDEREN ───────────────────
     if (isset($_POST['delete_order'])) {
         $db->prepare("DELETE FROM `orders` WHERE ordernummer = :id")
@@ -255,6 +264,24 @@ if (str_starts_with($actief, 'cat-')) {
         </div>
     </div>
 
+    <!-- Bestelling betaald modal -->
+    <div class="modal-overlay" id="betaaldModal">
+        <div class="modal">
+            <h3><i class="fa-solid fa-money-bill-wave" style="color:#16a34a"></i> Betaling ontvangen</h3>
+            <p>Markeer bestelling <strong id="betaaldNr"></strong> van <strong id="betaaldNaam"></strong> als betaald?</p>
+            <form method="POST" action="admin.php?tab=bestellingen">
+                <input type="hidden" name="mark_paid"    value="1">
+                <input type="hidden" name="mark_paid_id" id="betaaldId">
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-cancel" onclick="closeBetaaldModal()">Annuleren</button>
+                    <button type="submit" class="btn btn-add">
+                        <i class="fa-solid fa-check"></i> Ja, betaald
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Bestelling afgerond modal -->
     <div class="modal-overlay" id="orderDoneModal">
         <div class="modal">
@@ -352,6 +379,8 @@ if (str_starts_with($actief, 'cat-')) {
                             <th>Ophaaltijd</th>
                             <th>Producten</th>
                             <th>Totaal</th>
+                            <th>Betaalmethode</th>
+                            <th>Betaalstatus</th>
                             <th>Opmerking</th>
                             <th>Datum</th>
                             <th>Actie</th>
@@ -384,9 +413,29 @@ if (str_starts_with($actief, 'cat-')) {
                                     <?php endif; ?>
                                 </td>
                                 <td><strong>&euro;<?= number_format((float)($order['totaal'] ?? 0), 2, ',', '') ?></strong></td>
+                                <td>
+                                    <?php if (($order['betaalmethode'] ?? 'contant') === 'pin'): ?>
+                                        <span class="badge-maat"><i class="fa-solid fa-credit-card"></i> Pin</span>
+                                    <?php else: ?>
+                                        <span class="badge-maat"><i class="fa-solid fa-money-bill-wave"></i> Contant</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if (($order['betaalstatus'] ?? 'niet_betaald') === 'betaald'): ?>
+                                        <span class="badge-betaald"><i class="fa-solid fa-check"></i> Betaald</span>
+                                    <?php else: ?>
+                                        <span class="badge-niet-betaald">Nog te betalen</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><?= htmlspecialchars($order['opmerking'] ?? '') ?: '<span class="maat-empty">—</span>' ?></td>
                                 <td style="font-size:0.85rem;"><?= $datum ?></td>
                                 <td>
+                                    <?php if (($order['betaalstatus'] ?? 'niet_betaald') !== 'betaald'): ?>
+                                        <button type="button" class="btn btn-add"
+                                                onclick="openBetaaldModal(<?= (int)$order['ordernummer'] ?>, '<?= htmlspecialchars(addslashes($order['klant_naam']), ENT_QUOTES) ?>')">
+                                            <i class="fa-solid fa-money-bill-wave"></i> Betaald
+                                        </button>
+                                    <?php endif; ?>
                                     <button type="button" class="btn btn-save"
                                             onclick="openOrderModal(<?= (int)$order['ordernummer'] ?>, '<?= htmlspecialchars(addslashes($order['klant_naam']), ENT_QUOTES) ?>')">
                                         <i class="fa-solid fa-check"></i> Afgerond
@@ -608,6 +657,20 @@ if (str_starts_with($actief, 'cat-')) {
         }
         document.getElementById('orderDoneModal').addEventListener('click', function(e) {
             if (e.target === this) closeOrderModal();
+        });
+
+        // Betaald modal
+        function openBetaaldModal(id, naam) {
+            document.getElementById('betaaldId').value = id;
+            document.getElementById('betaaldNr').textContent = '#' + id;
+            document.getElementById('betaaldNaam').textContent = naam;
+            document.getElementById('betaaldModal').classList.add('open');
+        }
+        function closeBetaaldModal() {
+            document.getElementById('betaaldModal').classList.remove('open');
+        }
+        document.getElementById('betaaldModal').addEventListener('click', function(e) {
+            if (e.target === this) closeBetaaldModal();
         });
 
         // Categorie verwijder modal
